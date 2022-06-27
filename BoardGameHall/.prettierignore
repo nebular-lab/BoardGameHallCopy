@@ -1,0 +1,4 @@
+.next
+packages/server/dist/**
+packages/shared/dist/**
+packages/**/coverage/**

@@ -1,0 +1,17 @@
+{
+  "name": "@board-game-hall/shared",
+  "version": "0.0.1",
+  "description": "> TODO: description",
+  "author": "dododoSA <dododosa14@gmail.com>",
+  "homepage": "https://github.com/BoardGameHall/BoardGameHall#readme",
+  "license": "ISC",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsc -p . -d --watch",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "typescript": "^4.6.3"
+  }
+}

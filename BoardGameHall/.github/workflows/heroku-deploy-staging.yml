@@ -1,0 +1,60 @@
+name: Deploy to heloku(staging)
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build, Push and Release a Docker container to Heroku
+        uses: gonuit/heroku-docker-deploy@v1.3.3
+        with:
+          email: ${{ secrets.HEROKU_EMAIL }}
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_STAGING_APP_NAME }}
+
+  notify-to-slack:
+    runs-on: ubuntu-latest
+
+    needs:
+      - deploy
+
+    # this is required, otherwise it gets skipped if any needed jobs fail.
+    # https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idneeds
+    if: always()
+
+    steps:
+      - uses: technote-space/workflow-conclusion-action@v2
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: repo,job,commit,ref
+          custom_payload: |
+            {
+              icon_emoji: ':octocat:',
+              attachments: [{
+                color: 'good',
+                text: `Success: ${{github.workflow}}`
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.WORKFLOW_CONCLUSION == 'success'
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo,message,commit,ref,action,job
+          custom_payload: |
+            {
+              icon_emoji: ':octopus:'
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.WORKFLOW_CONCLUSION == 'failure'

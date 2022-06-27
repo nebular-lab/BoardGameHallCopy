@@ -1,0 +1,117 @@
+name: StaticTesting
+
+on: push
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      common: ${{ steps.filter.outputs.common }}
+      client: ${{ steps.filter.outputs.client }}
+      server: ${{ steps.filter.outputs.server }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            common:
+              - .github/workflows/**
+              - .eslintrc.js
+              - .prettierrc.js
+              - .prettierignore
+            client:
+              - packages/client/**
+            server:
+              - packages/server/**
+            shared:
+              - packages/shared/**
+  eslint-prettier-tsc:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14.x'
+          cache: 'yarn'
+          cache-dependency-path: yarn.lock
+
+      - name: Install Packages
+        if: ${{ needs.changes.outputs.client == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.common == 'true' || needs.changes.outputs.shared == 'true' }}
+        run: |
+          yarn -v
+          yarn install
+
+      - name: Shared Build
+        if: ${{ needs.changes.outputs.client == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.common == 'true' || needs.changes.outputs.shared == 'true' }}
+        working-directory: packages/shared
+        run: tsc -p . -d
+
+      - name: Shared
+        if: ${{ needs.changes.outputs.shared == 'true' || needs.changes.outputs.common == 'true' }}
+        working-directory: packages/shared
+        run: |
+          # build時に型チェックは確認済み
+          yarn eslint .
+          yarn prettier --check "./src/**/*.{js,ts,tsx}"
+          yarn test
+
+      - name: Client
+        if: ${{ needs.changes.outputs.client == 'true' || needs.changes.outputs.common == 'true' }}
+        working-directory: packages/client
+        run: |
+          tsc -p . --noEmit
+          yarn eslint .
+          yarn prettier --check "./**/*.{js,ts,tsx}"
+
+      - name: Server
+        if: ${{ needs.changes.outputs.server == 'true' || needs.changes.outputs.common == 'true' }}
+        working-directory: packages/server
+        run: |
+          tsc -p . --noEmit
+          yarn eslint .
+          yarn prettier --check "**/*.{js,ts}"
+
+  notify-to-slack:
+    runs-on: ubuntu-latest
+
+    needs:
+      - eslint-prettier-tsc
+
+    # this is required, otherwise it gets skipped if any needed jobs fail.
+    # https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idneeds
+    if: always()
+
+    steps:
+      - uses: technote-space/workflow-conclusion-action@v2
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: repo,job,commit,ref
+          custom_payload: |
+            {
+              icon_emoji: ':octocat:',
+              attachments: [{
+                color: 'good',
+                text: `Success: ${{github.event.pusher.name}}'s workflow (${{github.workflow}}) in <${{github.event.repository.url}}|${{github.repository}}> (${{github.ref}}) \n- ${{github.event.head_commit.message}} (<${{github.event.head_commit.url}}|${{github.event.head_commit.id}}>)`,
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.WORKFLOW_CONCLUSION == 'success'
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo,message,commit,ref,action,job
+          custom_payload: |
+            {
+              icon_emoji: ':octopus:'
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.WORKFLOW_CONCLUSION == 'failure'
